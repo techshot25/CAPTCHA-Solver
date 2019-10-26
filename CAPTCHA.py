@@ -1,10 +1,17 @@
-"""Data image recognizer
+# To add a new cell, type '# %%'
+# To add a new markdown cell, type '# %% [markdown]'
+# %% Change working directory from the workspace root to the ipynb file location. Turn this addition off with the DataScience.changeDirOnImportExport setting
+# ms-python.python added
+import os
+try:
+	os.chdir(os.path.join(os.getcwd(), '..\\..\..\AppData\Local\Temp'))
+	print(os.getcwd())
+except:
+	pass
+# %% [markdown]
+# ## Test
 
-Source: https://www.kaggle.com/fournierp/captcha-version-2-images
-
-"""
-#%% Import modules and set constants
-
+# %%
 from matplotlib import pyplot as plt
 from glob import glob
 from PIL import Image
@@ -17,14 +24,17 @@ from torch import nn, optim
 from torch.nn import functional as F
 import torch
 
-DEVICE = 'cuda:3' if torch.cuda.is_available() else 'cpu'
-PATH = 'computer_vision/samples/*.png'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+PATH = 'samples/*.png'
 
-#%% Import all images and labels 
+# %% [markdown]
+# Import all images and labels
 
+# %%
 pics = {}
 for image_file in glob(PATH):
-    label = image_file.split('/')[-1].split('.')[0]
+    #label = image_file.split('/')[-1].split('.')[0] # linux version
+    label = image_file.split('\\')[-1].split('.')[0]
     with Image.open(image_file) as pic:
         pics[label] = np.asarray(pic)
 
@@ -33,24 +43,32 @@ for image_file in glob(PATH):
 x = list(map(transforms.ToTensor(), pics.values()))
 y = list(map(list, pics.keys()))
 
-#%% Set up the encoder to create ones and zeros
+# %% [markdown]
+# Set up the encoder to create ones and zeros
 
+# %%
 encoder = OneHotEncoder().fit(y)
 y_encoded = encoder.transform(y).toarray()
 
-#%% split into train and test sets
+# %% [markdown]
+# Split into train and test sets
 
+# %%
 x_train, x_test, y_train, y_test = train_test_split(
     x, y_encoded, test_size=0.33, random_state=42)
 
-#%% tensorize all of them to prep for neural network
+# %% [markdown]
+# Tensorize all of them to prep for neural network
 
+# %%
 x_train = torch.stack(x_train)
 x_test = torch.stack(x_test)
 y_train = torch.tensor(y_train)
 
-#%% Define the CNN
+# %% [markdown]
+# Define the CNN
 
+# %%
 class CNN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -76,48 +94,61 @@ model.double().to(DEVICE)
 error = nn.BCELoss()
 opt = optim.Adam(model.parameters())
 
-#%%
+# %% [markdown]
+# Define the train function and start training.
+
+# %%
+y_t = y_train.to(DEVICE)
+x_t = x_train.double().to(DEVICE)
 
 def train(x, y, num_epochs=1000):
     losses = []
     model.train()
-    for i in range(num_epochs):
+    for epoch in range(1, 1 + num_epochs):
         opt.zero_grad()
         out = model(x.double().to(DEVICE))
-        loss = error(out, y_train.to(DEVICE))
+        loss = error(out, y_t)
         loss.backward()
         opt.step()
         losses.append(loss.item())
-        if i % int(0.1 * num_epochs) == 0:
-            print(i, loss.item())
+        if epoch % int(0.1 * num_epochs) == 0:
+            print(f'Epoch: {epoch} \t loss: {loss.item()}')
     return losses
 
-losses = train(x_train, y_train)
+losses = train(x_t, y_t)
 plt.plot(losses)
 plt.title('BCE loss per epoch')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.show()
 
-#%%
+# %% [markdown]
+# Run model on test set
 
+# %%
 with torch.no_grad():
     out = model(x_test.double().to(DEVICE)).cpu().detach().numpy()
 
+# Decode the ones and zeros matrix
 res = encoder.inverse_transform(out)
 true = encoder.inverse_transform(y_test)
 
 test_images = list(map(transforms.ToPILImage(), x_test))
 
-#%%
+# %% [markdown]
+# Sample and show results
 
-s = np.random.choice(len(x_test) - 1)
-print(f'True: {true[s]}\nPred: {res[s]}')
-plt.imshow(test_images[s])
-plt.show()
+# %%
+for s in np.random.choice(len(x_test) - 1, size=5):
+    plt.tit(f'True: {true[s]}\nPred: {res[s]}')
+    plt.imshow(test_images[s])
+    plt.show()
 
-#%%
+# %% [markdown]
+# Write a scoring algorithm for multilabel classifier
+# I chose to go with giving it partial credit for getting some characters correct even though it wouldn't pass a CAPTCHA test.
 
+# %%
 def multi_label_score(true, res):
     score = []
     for x, y in zip(true, res):
@@ -131,4 +162,5 @@ def multi_label_score(true, res):
 
 print(f'Accuracy score: {multi_label_score(true, res):.4g}%')
 
-# %%
+# %% [markdown]
+# This is pretty good for a back of the napkin code that tries to cheat CAPTCHA
